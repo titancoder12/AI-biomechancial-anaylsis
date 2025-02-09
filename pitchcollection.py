@@ -5,50 +5,78 @@ import re
 import pandas as pd
 import glob
 
-# Adjusted baud rate for proper communication
+# Hardware settings
 arduino_port = "/dev/ttyACM0"
-baud_rate = 115200  # Corrected baud rate to match the Arduino
-acc_threshold = 1
+baud_rate = 115200  
+
+# Data collection settings
+acc_start_threshold = 1
+acc_stop_threshold = 1
 ser = serial.Serial(arduino_port, baud_rate, timeout=1)
 motionless_threshold = 25
 sliding_window_length = 100
 
+# Detects the pitch, saves it to a CSV file
 def detect_pitch():
 
-    time.sleep(2)
-
-    # Send the "Start" command once
+    # Connect to Arduino
     ser.write("connect".encode('utf-8'))
 
+    # Confirm connectioon
     if ser.readline().decode('utf-8') == "connected":
         print("connected")
 
+    # Initialize variables
     pitch = []
-    #sliding_window = []
-    start_time = 0
-    end_time = 0
+    sliding_window = []
     recording_pitch = False
     motionless_period = 0
-    try:
-        i = 0
 
+    try:
+        # Start collecting data
         while True:
-            #ser.write("Start".encode('utf-8'))
-            i += 1
-            #print(i)
+            # Only enter if there is data in the buffer
             if ser.in_waiting > 0:
-                #print("A")
-                message = ser.readline().decode('utf-8') #.strip()  # Use strip() to remove any unwanted newline characters
+                
+                # Read the data from the buffer
+                message = ser.readline().decode('utf-8') #.strip()  
                 Acx0, Acy0, Acz0, Gcx0, Gcy0, Gcz0, Acx1, Acy1, Acz1, Gcx1, Gcy1, Gcz1 = extract(message)
                 
-                #print("B")
-                if abs(Acx0) > acc_threshold or Acy0 > abs(acc_threshold) or Acz0 > abs(acc_threshold) or Acx1 > abs(acc_threshold) or Acy1 > abs(acc_threshold) or Acz1 > abs(acc_threshold):
-                    recording_pitch = True
-                    start_time = time.time()
+                # Sliding window is used to store the data before the pitch is detected to get complete pitch data.
+                
+                # Variable makes sure the data is not recorded in duplicate.
+                rcbsliding = False
 
-                if recording_pitch:
-                    end_time = time.time()
-                    pitch.append({"Timestamp": end_time - start_time,
+                if len(sliding_window) < sliding_window_length and recording_pitch == False:
+                    rcbsliding = True
+                    sliding_window.append({"Timestamp": time.time(),
+                                  "Acx0": Acx0,
+                                  "Acy0": Acy0,
+                                  "Acz0": Acz0,
+                                  "Gcx0": Gcx0,
+                                  "Gcy0": Gcy0,
+                                  "Gcz0": Gcz0,
+                                  "Acx1": Acx1,
+                                  "Acy1": Acy1,
+                                  "Acz1": Acz1,
+                                  "Gcx1": Gcx1,
+                                  "Gcy1": Gcy1,
+                                  "Gcz1": Gcz1})
+                
+                # If the sliding window is full, remove the first element and add the new element.
+                if len(sliding_window) == sliding_window_length+1:
+                    sliding_window.pop(0)
+
+                
+                # Pitch recording
+                # If the acceleration is greater than the threshold, start recording the pitch.
+                if abs(Acx0) >= acc_start_threshold or Acy0 >= abs(acc_start_threshold) or Acz0 >= abs(acc_start_threshold) or Acx1 >= abs(acc_start_threshold) or Acy1 >= abs(acc_start_threshold) or Acz1 >= abs(acc_start_threshold):
+                    recording_pitch = True
+                    #start_time = time.time()
+                
+                # Only record the pitch if the sliding window has not already recorded the data.
+                if recording_pitch and not rcbsliding:
+                    pitch.append({"Timestamp": time.time(),
                                   "Acx0": Acx0,
                                   "Acy0": Acy0,
                                   "Acz0": Acz0,
@@ -62,31 +90,40 @@ def detect_pitch():
                                   "Gcy1": Gcy1,
                                   "Gcz1": Gcz1})
 
-                    if all(abs(val) < acc_threshold for val in (Acx0, Acy0, Acz0, Acx1, Acy1, Acz1)):
+                    # If the acceleration is less than the stop threshold, stop recording the pitch.
+                    if all(abs(val) <= acc_stop_threshold for val in (Acx0, Acy0, Acz0, Acx1, Acy1, Acz1)):
                         motionless_period += 1
                     else:
                         motionless_period = 0  # Reset when motion resumes
 
+                    # Save pitch data after pitch finish detected
                     if motionless_period >= motionless_threshold:
-                        pitch_df = pd.DataFrame(pitch)
+                        print("Sliding window samples:"+str(len(sliding_window)))
+                        print("Pitch motion samples:"+str(len(pitch)))
+                        print("Total samples:"+str(len(sliding_window)+len(pitch)))
+
+                        complete_pitch = sliding_window + pitch
+
+                        # Save pitch data to CSV file
+                        pitch_df = pd.DataFrame(complete_pitch)
                         filename = create_file_name()
                         pitch_df.to_csv("./pitches/" + filename)
+
+                        # Reset variables
                         pitch = []
-                        start_time = 0
-                        end_time = 0
                         recording_pitch = False
                         motionless_period = 0
-                
-                #print((Acx0, Acy0, Acz0))
-                #print(message)   
-                #print(pitch)
+    
+    # Safely exit the program
     except KeyboardInterrupt:
         print("exiting...")
 
     finally:
+        # Safely disconnect from the Arduino
         ser.write("disconnect".encode('utf-8'))
         ser.close()
 
+# Extracts data from the serial
 def extract(message):
     l = []
     for t in message.split():
@@ -97,11 +134,12 @@ def extract(message):
             pass
     return tuple(l) if len(l) == 12 else (0,) * 12  # Ensure all values exist
 
+# Creates a file name based on existing files in the directory
 def create_file_name():
     print("Creating file.")
     filenamenumbers = []
     for file in glob.glob("./pitches/*.csv"):  # Corrected path to CSV files
-        print(file)
+        #print(file)
         filenamenumbers.append(int(re.findall(r'\d+', file)[0]))  # Safely extract numbers from filenames
     if filenamenumbers == []:
         num = 0
@@ -112,4 +150,5 @@ def create_file_name():
     print(str(num) + "\n\n\n\n")
     return "pitch_" + str(num) + ".csv"  # Adding .csv extension
 
+# Initiate the pitch detection
 detect_pitch()
