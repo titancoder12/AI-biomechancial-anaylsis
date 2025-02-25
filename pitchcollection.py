@@ -4,10 +4,19 @@ import serial.tools.list_ports
 import re
 import pandas as pd
 import glob
+from bleak import BleakClient
+import asyncio
 
 # Hardware settings
 arduino_port = "/dev/ttyACM0"
 baud_rate = 115200  
+"""ADDRESS = "f4:12:fa:6f:7c:c1"  # Address of the BLE device
+UUID_X = "00002A19-0000-1000-8000-00805F9B34FB"
+
+async def read_imu():
+    async with BleakClient(ADDRESS) as client:
+        x = await client.read_gatt_char(UUID_X)
+        print(x)"""
 
 # Data collection settings
 acc_start_threshold = 1
@@ -18,7 +27,8 @@ sliding_window_length = 100
 
 # Detects the pitch, saves it to a CSV file
 def detect_pitch():
-
+    print("Connecting...")
+    
     # Connect to Arduino
     ser.write("connect".encode('utf-8'))
 
@@ -39,7 +49,8 @@ def detect_pitch():
             if ser.in_waiting > 0:
                 
                 # Read the data from the buffer
-                message = ser.readline().decode('utf-8') #.strip()  
+                message = ser.readline().decode('utf-8') #.strip() 
+                print(message) 
                 Acx0, Acy0, Acz0, Gcx0, Gcy0, Gcz0, Acx1, Acy1, Acz1, Gcx1, Gcy1, Gcz1 = extract(message)
                 
                 # Sliding window is used to store the data before the pitch is detected to get complete pitch data.
