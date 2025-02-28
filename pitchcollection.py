@@ -18,6 +18,8 @@ async def read_imu():
         x = await client.read_gatt_char(UUID_X)
         print(x)"""
 
+pitches_created = 0
+
 # Data collection settings
 acc_start_threshold = 1
 acc_stop_threshold = 1
@@ -120,6 +122,8 @@ def detect_pitch():
                         filename = create_file_name()
                         pitch_df.to_csv("./pitches/" + filename)
 
+                        pitches_created += 1
+
                         # Reset variables
                         pitch = []
                         recording_pitch = False
@@ -128,6 +132,7 @@ def detect_pitch():
     # Safely exit the program
     except KeyboardInterrupt:
         print("exiting...")
+        print("Total pitches created: " + str(pitches_created))
 
     finally:
         # Safely disconnect from the Arduino
