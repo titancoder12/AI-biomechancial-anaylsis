@@ -18,31 +18,45 @@ async def read_imu():
         x = await client.read_gatt_char(UUID_X)
         print(x)"""
 
+files_created = []
 pitches_created = 0
 
 # Data collection settings
-acc_start_threshold = 1
-acc_stop_threshold = 1
+acc_start_threshold = 5
+acc_stop_threshold = 4
 ser = serial.Serial(arduino_port, baud_rate, timeout=1)
 motionless_threshold = 25
 sliding_window_length = 100
 
 # Detects the pitch, saves it to a CSV file
 def detect_pitch():
-    print("Connecting...")
+    print("Access recorded pitches at /pitches in the current directory.")
+    print("Press Ctrl+C to exit.")
+
+    #time.sleep(2)
+    
+    print("\nConnecting...")
     
     # Connect to Arduino
     ser.write("connect".encode('utf-8'))
 
+
     # Confirm connectioon
-    if ser.readline().decode('utf-8') == "connected":
-        print("connected")
+    while True:
+        if ser.in_waiting > 0:
+            message = ser.readline().decode('utf-8').strip() 
+            if message == "Connected":
+                print("Connected.\n")
+                print("Waiting for pitch...\n")
+                break
 
     # Initialize variables
     pitch = []
     sliding_window = []
     recording_pitch = False
     motionless_period = 0
+
+    global pitches_created
 
     try:
         # Start collecting data
@@ -52,8 +66,8 @@ def detect_pitch():
                 
                 # Read the data from the buffer
                 message = ser.readline().decode('utf-8') #.strip() 
-                print(message) 
-                Acx0, Acy0, Acz0, Gcx0, Gcy0, Gcz0, Acx1, Acy1, Acz1, Gcx1, Gcy1, Gcz1 = extract(message)
+                #print(extract(message)) 
+                Acx0, Acy0, Acz0, Gyx0, Gyy0, Gyz0, Acx1, Acy1, Acz1, Gyx1, Gyy1, Gyz1, Acx2, Acy2, Acz2, Gyx2, Gyy2, Gyz2 = extract(message)
                 
                 # Sliding window is used to store the data before the pitch is detected to get complete pitch data.
                 
@@ -66,16 +80,24 @@ def detect_pitch():
                                   "Acx0": Acx0,
                                   "Acy0": Acy0,
                                   "Acz0": Acz0,
-                                  "Gcx0": Gcx0,
-                                  "Gcy0": Gcy0,
-                                  "Gcz0": Gcz0,
+                                  "Gyx0": Gyx0,
+                                  "Gyy0": Gyy0,
+                                  "Gyz0": Gyz0,
                                   "Acx1": Acx1,
                                   "Acy1": Acy1,
                                   "Acz1": Acz1,
-                                  "Gcx1": Gcx1,
-                                  "Gcy1": Gcy1,
-                                  "Gcz1": Gcz1})
-                
+                                  "Gyx1": Gyx1,
+                                  "Gyy1": Gyy1,
+                                  "Gyz1": Gyz1,
+                                  "Acx2": Acx2,
+                                  "Acy2": Acy2,
+                                  "Acz2": Acz2,
+                                  "Gyx2": Gyx2,
+                                  "Gyy2": Gyy2,
+                                  "Gyz2": Gyz2
+                                  })
+                    
+            
                 # If the sliding window is full, remove the first element and add the new element.
                 if len(sliding_window) == sliding_window_length+1:
                     sliding_window.pop(0)
@@ -83,7 +105,8 @@ def detect_pitch():
                 
                 # Pitch recording
                 # If the acceleration is greater than the threshold, start recording the pitch.
-                if abs(Acx0) >= acc_start_threshold or Acy0 >= abs(acc_start_threshold) or Acz0 >= abs(acc_start_threshold) or Acx1 >= abs(acc_start_threshold) or Acy1 >= abs(acc_start_threshold) or Acz1 >= abs(acc_start_threshold):
+                if any(abs(val) >= acc_start_threshold for val in (Acx0-sliding_window[-1]["Acx0"], Acy0-sliding_window[-1]["Acy0"], Acz0-sliding_window[-1]["Acz0"], Acx1-sliding_window[-1]["Acx1"], Acy1-sliding_window[-1]["Acy1"], Acz1-sliding_window[-1]["Acz1"], Acx2-sliding_window[-1]["Acx2"], Acy2-sliding_window[-1]["Acy2"], Acz2-sliding_window[-1]["Acz2"],)) and recording_pitch==False:
+                    print("-------- Pitch detected --------")
                     recording_pitch = True
                     #start_time = time.time()
                 
@@ -93,18 +116,24 @@ def detect_pitch():
                                   "Acx0": Acx0,
                                   "Acy0": Acy0,
                                   "Acz0": Acz0,
-                                  "Gcx0": Gcx0,
-                                  "Gcy0": Gcy0,
-                                  "Gcz0": Gcz0,
+                                  "Gyx0": Gyx0,
+                                  "Gyy0": Gyy0,
+                                  "Gyz0": Gyz0,
                                   "Acx1": Acx1,
                                   "Acy1": Acy1,
                                   "Acz1": Acz1,
-                                  "Gcx1": Gcx1,
-                                  "Gcy1": Gcy1,
-                                  "Gcz1": Gcz1})
+                                  "Gyx1": Gyx1,
+                                  "Gyy1": Gyy1,
+                                  "Gyz1": Gyz1,
+                                  "Acx2": Acx2,
+                                  "Acy2": Acy2,
+                                  "Acz2": Acz2,
+                                  "Gyx2": Gyx2,
+                                  "Gyy2": Gyy2,
+                                  "Gyz2": Gyz2})
 
                     # If the acceleration is less than the stop threshold, stop recording the pitch.
-                    if all(abs(val) <= acc_stop_threshold for val in (Acx0, Acy0, Acz0, Acx1, Acy1, Acz1)):
+                    if all(abs(val) <= acc_stop_threshold for val in (Acx0-sliding_window[-1]["Acx0"], Acy0-sliding_window[-1]["Acy0"], Acz0-sliding_window[-1]["Acz0"], Acx1-sliding_window[-1]["Acx1"], Acy1-sliding_window[-1]["Acy1"], Acz1-sliding_window[-1]["Acz1"], Acx2-sliding_window[-1]["Acx2"], Acy2-sliding_window[-1]["Acy2"], Acz2-sliding_window[-1]["Acz2"],)):
                         motionless_period += 1
                     else:
                         motionless_period = 0  # Reset when motion resumes
@@ -131,8 +160,9 @@ def detect_pitch():
     
     # Safely exit the program
     except KeyboardInterrupt:
-        print("exiting...")
+        print("\nExiting...\n")
         print("Total pitches created: " + str(pitches_created))
+        print("Created files: " + str(files_created))
 
     finally:
         # Safely disconnect from the Arduino
@@ -144,15 +174,15 @@ def extract(message):
     l = []
     for t in message.split():
         try:
-            n = re.sub(r"[01](AcX|AcY|AcZ|GyX|GyY|GyZ):", "", t)
+            n = re.sub(r"[012](AcX|AcY|AcZ|GyX|GyY|GyZ|):", "", t)
             l.append(float(n))
         except ValueError:
             pass
-    return tuple(l) if len(l) == 12 else (0,) * 12  # Ensure all values exist
+    return tuple(l) if len(l) == 18 else (0,) * 18  # Ensure all values exist
 
 # Creates a file name based on existing files in the directory
 def create_file_name():
-    print("Creating file.")
+    #print("Creating file...")
     filenamenumbers = []
     for file in glob.glob("./pitches/*.csv"):  # Corrected path to CSV files
         #print(file)
@@ -163,7 +193,8 @@ def create_file_name():
         max_num = max(filenamenumbers)
         num = max_num + 1
     
-    print(str(num) + "\n\n\n\n")
+    print("Created file pitch_"+str(num)+".csv" + "\n\n")
+    files_created.append(num)
     return "pitch_" + str(num) + ".csv"  # Adding .csv extension
 
 # Initiate the pitch detection
