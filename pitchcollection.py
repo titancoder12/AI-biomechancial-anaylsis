@@ -6,23 +6,30 @@ import pandas as pd
 import glob
 from bleak import BleakClient
 import asyncio
+import struct
+
+#print("Loading...")
 
 # Hardware settings
-arduino_port = "/dev/ttyACM0"
+#arduino_port = "/dev/ttyACM0" # Linux
+arduino_port = "/dev/cu.usbmodem14301" # Mac
+#arduino_port = "/dev/COM3" # Windows
+
 baud_rate = 115200  
-"""ADDRESS = "f4:12:fa:6f:7c:c1"  # Address of the BLE device
-UUID_X = "00002A19-0000-1000-8000-00805F9B34FB"
+ADDRESS = "F63F8735-29EA-2F5E-8653-DF2C1463A90B"  # Address of the BLE device
+UUID_X = "180A"
 
 async def read_imu():
     async with BleakClient(ADDRESS) as client:
-        x = await client.read_gatt_char(UUID_X)
-        print(x)"""
+        data = await client.read_gatt_char("0004")
+        decoded_value = data.decode("utf-8")
+        print("Decoded String:", decoded_value)
 
 files_created = []
 pitches_created = 0
 
 # Data collection settings
-acc_start_threshold = 5
+acc_start_threshold = 14
 acc_stop_threshold = 4
 ser = serial.Serial(arduino_port, baud_rate, timeout=1)
 motionless_threshold = 25
@@ -30,6 +37,7 @@ sliding_window_length = 100
 
 # Detects the pitch, saves it to a CSV file
 def detect_pitch():
+
     print("Access recorded pitches at /pitches in the current directory.")
     print("Press Ctrl+C to exit.")
 
@@ -138,6 +146,8 @@ def detect_pitch():
                     else:
                         motionless_period = 0  # Reset when motion resumes
 
+                    savefile = True
+
                     # Save pitch data after pitch finish detected
                     if motionless_period >= motionless_threshold:
                         print("Sliding window samples:"+str(len(sliding_window)))
@@ -145,13 +155,20 @@ def detect_pitch():
                         print("Total samples:"+str(len(sliding_window)+len(pitch)))
 
                         complete_pitch = sliding_window + pitch
+                        speed = input("Enter speed of pitch (mph) [OV to override]: ")
+                        if speed == "OV":
+                            print("Pitch overrided. Not saving.")
+                            print()
+                            savefile = False
 
-                        # Save pitch data to CSV file
-                        pitch_df = pd.DataFrame(complete_pitch)
-                        filename = create_file_name()
-                        pitch_df.to_csv("./pitches/" + filename)
+                        if savefile == True:
+                            # Save pitch data to CSV file
+                            pitch_df = pd.DataFrame(complete_pitch)
+                            pitch_df["speed_mph"] = speed
+                            filename = create_file_name()
+                            pitch_df.to_csv("./pitches/" + filename)
 
-                        pitches_created += 1
+                            pitches_created += 1
 
                         # Reset variables
                         pitch = []
@@ -198,4 +215,5 @@ def create_file_name():
     return "pitch_" + str(num) + ".csv"  # Adding .csv extension
 
 # Initiate the pitch detection
+asyncio.run(read_imu())
 detect_pitch()
