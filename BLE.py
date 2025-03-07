@@ -1,9 +1,9 @@
-from bleak import BleakScanner
 import asyncio
+from bleak import BleakScanner
 
-async def scan():
+async def scan_ble():
     devices = await BleakScanner.discover()
     for device in devices:
-        print(device)
+        print(f"Device found: {device.name} - {device.address}")
 
-asyncio.run(scan())
+asyncio.run(scan_ble())

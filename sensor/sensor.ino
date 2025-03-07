@@ -34,6 +34,7 @@ void selectChannel(uint8_t channel) {
 
 void setup() {
     Serial.begin(115200);
+    while (!Serial);
 
     //BLE
     if (!BLE.begin()) {
@@ -49,6 +50,7 @@ void setup() {
     imuService.addCharacteristic(AcX0);
     imuService.addCharacteristic(AcY0);
     imuService.addCharacteristic(AcZ0);
+
     imuService.addCharacteristic(Data);
 
     BLE.addService(imuService);
@@ -86,6 +88,7 @@ void setup() {
         //mpu3.setFilterBandwidth(MPU6050_BAND_260_HZ);
         delay(2000);
     }
+    //Serial.println(BLE.address());
 }
 
 void loop() {
@@ -140,14 +143,14 @@ void loop() {
             double GY2 = g.gyro.y;
             double GZ2 = g.gyro.z;
 
-            char buffer[50];
+            char buffer[250];
             sprintf(buffer, "0AcX:%.4f 0AcY:%.4f 0AcZ:%.4f 0GyX:%.4f 0GyY:%.4f 0GyZ:%.4f 1AcX:%.4f 1AcY:%.4f 1AcZ:%.4f 1GyX:%.4f 1GyY:%.4f 1GyZ:%.4f 2AcX:%.4f 2AcY:%.4f 2AcZ:%.4f 2GyX:%.4f 2GyY:%.4f 2GyZ:%.4f", AX0, AY0, AZ0, GX0, GY0, GZ0, AX1, AY1, AZ1, GX1, GY1, GZ1, AX2, AY2, AZ2, GX2, GY2, GZ2);
 
             Data.writeValue(buffer);
 
-            Serial.print("0AcX:"); Serial.print(a.acceleration.x);
-            Serial.print("0AcY"); Serial.print(a.acceleration.y);
-            Serial.print("0AcZ"); Serial.println(a.acceleration.z);
+            //Serial.print("0AcX:"); Serial.print(a.acceleration.x);
+            //Serial.print("0AcY"); Serial.print(a.acceleration.y);
+            //Serial.print("0AcZ"); Serial.println(a.acceleration.z);
 
             delay(100); // Small delay before sending next data
         }

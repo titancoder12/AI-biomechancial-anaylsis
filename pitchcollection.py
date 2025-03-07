@@ -17,11 +17,12 @@ arduino_port = "/dev/cu.usbmodem14301" # Mac
 
 baud_rate = 115200  
 ADDRESS = "F63F8735-29EA-2F5E-8653-DF2C1463A90B"  # Address of the BLE device
+#ADDRESS = "70:ac:f4:12:b6:f0"
 UUID_X = "180A"
 
 async def read_imu():
     async with BleakClient(ADDRESS) as client:
-        data = await client.read_gatt_char("0004")
+        data = await client.read_gatt_char("0024")
         decoded_value = data.decode("utf-8")
         print("Decoded String:", decoded_value)
 
