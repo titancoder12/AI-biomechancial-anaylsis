@@ -10,11 +10,10 @@ using namespace std;
 #define TCA_ADDRESS 0x70  // I2C address for the TCA9548A
 
 BLEService imuService("180A");
-BLEFloatCharacteristic S0("1", BLERead | BLENotify);  // X0-axis acc characteristic
-BLEFloatCharacteristic S1("2", BLERead | BLENotify);  // Y0-axis acc characteristic
-BLEFloatCharacteristic AcZ0("3", BLERead | BLENotify);  // Z0-axis acc characteristi
+BLEStringCharacteristic S0("0001", BLERead | BLENotify, 150);  // X0-axis acc characteristic
+BLEStringCharacteristic S1("0002", BLERead | BLENotify, 150);  // Y0-axis acc characteristic
+BLEStringCharacteristic S2("0003", BLERead | BLENotify, 150);  // Z0-axis acc characteristi
 
-BLEStringCharacteristic Data("4", BLERead | BLENotify, 150);
 // Create MPU6050 objects for each sensor
 Adafruit_MPU6050 mpu1, mpu2, mpu3;
 
@@ -42,11 +41,9 @@ void setup() {
     BLE.setLocalName("IMU_Sensor");
     BLE.setAdvertisedService(imuService);
 
-    imuService.addCharacteristic(AcX0);
-    imuService.addCharacteristic(AcY0);
-    imuService.addCharacteristic(AcZ0);
-
-    imuService.addCharacteristic(Data);
+    imuService.addCharacteristic(S0);
+    imuService.addCharacteristic(S1);
+    imuService.addCharacteristic(S2);
 
     BLE.addService(imuService);
     
@@ -83,23 +80,9 @@ void setup() {
         //mpu3.setFilterBandwidth(MPU6050_BAND_260_HZ);
         delay(2000);
     }
-    //Serial.println(BLE.address());
 }
 
 void loop() {
-    //Serial.println(BLE.address());
-    if (Serial.available()) {
-        String command = Serial.readStringUntil('\n');
-        command.trim();
-        Serial.println("Command: " + command);
-        if (command == "connect") {
-            computer_connected = true;
-            Serial.println("Connected");
-        } else if (command == "disconnect") {
-            computer_connected = false;
-            Serial.println("Disconnected");
-        }
-    }
 
     // Listen for BLE connections
     BLEDevice central = BLE.central();
@@ -120,6 +103,11 @@ void loop() {
             double GY0 = g.gyro.y;
             double GZ0 = g.gyro.z;
 
+            //Write values to BLE
+            char buffer0[250];
+            sprintf(buffer0, "0AcX:%.4f 0AcY:%.4f 0AcZ:%.4f 0GyX:%.4f 0GyY:%.4f 0GyZ:%.4f", AX0, AY0, AZ0, GX0, GY0, GZ0);
+            S0.writeValue(buffer0);
+
             selectChannel(1);  
             mpu2.getEvent(&a, &g, &temp);
             double AX1 = a.acceleration.x;
@@ -128,6 +116,11 @@ void loop() {
             double GX1 = g.gyro.x;
             double GY1 = g.gyro.y;
             double GZ1 = g.gyro.z;
+
+            //Write values to BLE
+            char buffer1[250];
+            sprintf(buffer1, "1AcX:%.4f 1AcY:%.4f 1AcZ:%.4f 1GyX:%.4f 1GyY:%.4f 1GyZ:%.4f", AX1, AY1, AZ1, GX1, GY1, GZ1);
+            S1.writeValue(buffer1);
 
             selectChannel(2);  
             mpu3.getEvent(&a, &g, &temp);
@@ -138,60 +131,14 @@ void loop() {
             double GY2 = g.gyro.y;
             double GZ2 = g.gyro.z;
 
-            char buffer[500];
-            sprintf(buffer, "0AcX:%.4f 0AcY:%.4f 0AcZ:%.4f 0GyX:%.4f 0GyY:%.4f 0GyZ:%.4f 1AcX:%.4f 1AcY:%.4f 1AcZ:%.4f 1GyX:%.4f 1GyY:%.4f 1GyZ:%.4f 2AcX:%.4f 2AcY:%.4f 2AcZ:%.4f 2GyX:%.4f 2GyY:%.4f 2GyZ:%.4f", AX0, AY0, AZ0, GX0, GY0, GZ0, AX1, AY1, AZ1, GX1, GY1, GZ1, AX2, AY2, AZ2, GX2, GY2, GZ2);
-
-            Data.writeValue(buffer);
-
-            //Serial.print("0AcX:"); Serial.print(a.acceleration.x);
-            //Serial.print("0AcY"); Serial.print(a.acceleration.y);
-            //Serial.print("0AcZ"); Serial.println(a.acceleration.z);
+            //Write values to BLE
+            char buffer2[250];
+            sprintf(buffer2, "2AcX:%.4f 2AcY:%.4f 2AcZ:%.4f 2GyX:%.4f 2GyY:%.4f 2GyZ:%.4f", AX2, AY2, AZ2, GX2, GY2, GZ2);
+            S2.writeValue(buffer2);
 
             delay(5); // Small delay before sending next data
+
         }
         Serial.println("Disconnected from central");
     }
-
-    /*sensors_event_t a, g, temp;
-    
-    if (computer_connected) {
-    
-        // --- Read from MPU6050 on Channel 0 ---
-        selectChannel(0);         // Switch to channel 0
-        mpu1.getEvent(&a, &g, &temp);  // Get sensor event data
-        //Serial.print("Channel 0 - Accel X: "); Serial.println(a.acceleration.x);
-
-        Serial.print("0AcX:"); Serial.print(a.acceleration.x);
-        Serial.print(" 0AcY:"); Serial.print(a.acceleration.y);
-        Serial.print(" 0AcZ:"); Serial.print(a.acceleration.z);
-        Serial.print(" 0GyX:"); Serial.print(g.gyro.x);
-        Serial.print(" 0GyY:"); Serial.print(g.gyro.y);
-        Serial.print(" 0GyZ:"); Serial.print(g.gyro.z);
-        // --- Read from MPU6050 on Channel 1 ---
-        selectChannel(1);         // Switch to channel 1
-        mpu2.getEvent(&a, &g, &temp);
-        //Serial.print("Channel 1 - Accel X: "); Serial.println(a.acceleration.x);
-
-        Serial.print(" 1AcX:"); Serial.print(a.acceleration.x);
-        Serial.print(" 1AcY:"); Serial.print(a.acceleration.y);
-        Serial.print(" 1AcZ:"); Serial.print(a.acceleration.z);
-        Serial.print(" 1GyX:"); Serial.print(g.gyro.x);
-        Serial.print(" 1GyY:"); Serial.print(g.gyro.y);
-        Serial.print(" 1GyZ:"); Serial.print(g.gyro.z);
-
-        // --- Read from MPU6050 on Channel 2 ---
-        selectChannel(2);         // Switch to channel 2
-        mpu3.getEvent(&a, &g, &temp);
-        //Serial.print("Channel 2 - Accel X: "); Serial.println(a.acceleration.x);
-
-        Serial.print(" 2AcX:"); Serial.print(a.acceleration.x);
-        Serial.print(" 2AcY:"); Serial.print(a.acceleration.y);
-        Serial.print(" 2AcZ:"); Serial.print(a.acceleration.z);
-        Serial.print(" 2GyX:"); Serial.print(g.gyro.x);
-        Serial.print(" 2GyY:"); Serial.print(g.gyro.y);
-        Serial.print(" 2GyZ:"); Serial.print(g.gyro.z);
-
-        Serial.println();
-        //delay(5); // Short delay before next cycle
-    }*/
 }

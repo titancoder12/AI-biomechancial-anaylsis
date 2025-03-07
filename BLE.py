@@ -1,9 +1,13 @@
+from bleak import BleakClient
 import asyncio
-from bleak import BleakScanner
+ADDRESS = "F63F8735-29EA-2F5E-8653-DF2C1463A90B"  # Your BLE device address
 
-async def scan_ble():
-    devices = await BleakScanner.discover()
-    for device in devices:
-        print(f"Device found: {device.name} - {device.address}")
+async def list_services():
+    async with BleakClient(ADDRESS) as client:
+        services = await client.get_services()
+        for service in services:
+            print(f"🔹 Service: {service.uuid}")
+            for char in service.characteristics:
+                print(f"   📌 Characteristic: {char.uuid}, Properties: {char.properties}")
 
-asyncio.run(scan_ble())
+asyncio.run(list_services()) 
