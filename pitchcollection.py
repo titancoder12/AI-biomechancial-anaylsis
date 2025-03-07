@@ -25,6 +25,7 @@ async def read_imu():
         data = await client.read_gatt_char("0024")
         decoded_value = data.decode("utf-8")
         print("Decoded String:", decoded_value)
+        return decoded_value
 
 files_created = []
 pitches_created = 0
@@ -32,12 +33,12 @@ pitches_created = 0
 # Data collection settings
 acc_start_threshold = 14
 acc_stop_threshold = 4
-ser = serial.Serial(arduino_port, baud_rate, timeout=1)
+#ser = serial.Serial(arduino_port, baud_rate, timeout=1)
 motionless_threshold = 25
 sliding_window_length = 100
 
 # Detects the pitch, saves it to a CSV file
-def detect_pitch():
+async def detect_pitch():
 
     print("Access recorded pitches at /pitches in the current directory.")
     print("Press Ctrl+C to exit.")
@@ -47,17 +48,17 @@ def detect_pitch():
     print("\nConnecting...")
     
     # Connect to Arduino
-    ser.write("connect".encode('utf-8'))
+    #ser.write("connect".encode('utf-8'))
 
 
     # Confirm connectioon
-    while True:
+    """while True:
         if ser.in_waiting > 0:
             message = ser.readline().decode('utf-8').strip() 
             if message == "Connected":
                 print("Connected.\n")
                 print("Waiting for pitch...\n")
-                break
+                break"""
 
     # Initialize variables
     pitch = []
@@ -67,44 +68,47 @@ def detect_pitch():
 
     global pitches_created
 
-    try:
-        # Start collecting data
+    # Start collecting data
+    async with BleakClient(ADDRESS) as client:
         while True:
             # Only enter if there is data in the buffer
-            if ser.in_waiting > 0:
-                
-                # Read the data from the buffer
-                message = ser.readline().decode('utf-8') #.strip() 
-                #print(extract(message)) 
-                Acx0, Acy0, Acz0, Gyx0, Gyy0, Gyz0, Acx1, Acy1, Acz1, Gyx1, Gyy1, Gyz1, Acx2, Acy2, Acz2, Gyx2, Gyy2, Gyz2 = extract(message)
-                
-                # Sliding window is used to store the data before the pitch is detected to get complete pitch data.
-                
-                # Variable makes sure the data is not recorded in duplicate.
-                rcbsliding = False
+            # if ser.in_waiting > 0:
+            # Read the data from the buffer
+            #message = ser.readline().decode('utf-8') #.strip() 
+            data = await client.read_gatt_char("0024")
+            message = data.decode("utf-8")
+            print(message)
 
-                if len(sliding_window) < sliding_window_length and recording_pitch == False:
-                    rcbsliding = True
-                    sliding_window.append({"Timestamp": time.time(),
-                                  "Acx0": Acx0,
-                                  "Acy0": Acy0,
-                                  "Acz0": Acz0,
-                                  "Gyx0": Gyx0,
-                                  "Gyy0": Gyy0,
-                                  "Gyz0": Gyz0,
-                                  "Acx1": Acx1,
-                                  "Acy1": Acy1,
-                                  "Acz1": Acz1,
-                                  "Gyx1": Gyx1,
-                                  "Gyy1": Gyy1,
-                                  "Gyz1": Gyz1,
-                                  "Acx2": Acx2,
-                                  "Acy2": Acy2,
-                                  "Acz2": Acz2,
-                                  "Gyx2": Gyx2,
-                                  "Gyy2": Gyy2,
-                                  "Gyz2": Gyz2
-                                  })
+            #print(extract(message)) 
+            Acx0, Acy0, Acz0, Gyx0, Gyy0, Gyz0, Acx1, Acy1, Acz1, Gyx1, Gyy1, Gyz1, Acx2, Acy2, Acz2, Gyx2, Gyy2, Gyz2 = extract(message)
+            
+            # Sliding window is used to store the data before the pitch is detected to get complete pitch data.
+            
+            # Variable makes sure the data is not recorded in duplicate.
+            rcbsliding = False
+
+            if len(sliding_window) < sliding_window_length and recording_pitch == False:
+                rcbsliding = True
+                sliding_window.append({"Timestamp": time.time(),
+                                "Acx0": Acx0,
+                                "Acy0": Acy0,
+                                "Acz0": Acz0,
+                                "Gyx0": Gyx0,
+                                "Gyy0": Gyy0,
+                                "Gyz0": Gyz0,
+                                "Acx1": Acx1,
+                                "Acy1": Acy1,
+                                "Acz1": Acz1,
+                                "Gyx1": Gyx1,
+                                "Gyy1": Gyy1,
+                                "Gyz1": Gyz1,
+                                "Acx2": Acx2,
+                                "Acy2": Acy2,
+                                "Acz2": Acz2,
+                                "Gyx2": Gyx2,
+                                "Gyy2": Gyy2,
+                                "Gyz2": Gyz2
+                                })
                     
             
                 # If the sliding window is full, remove the first element and add the new element.
@@ -122,24 +126,24 @@ def detect_pitch():
                 # Only record the pitch if the sliding window has not already recorded the data.
                 if recording_pitch and not rcbsliding:
                     pitch.append({"Timestamp": time.time(),
-                                  "Acx0": Acx0,
-                                  "Acy0": Acy0,
-                                  "Acz0": Acz0,
-                                  "Gyx0": Gyx0,
-                                  "Gyy0": Gyy0,
-                                  "Gyz0": Gyz0,
-                                  "Acx1": Acx1,
-                                  "Acy1": Acy1,
-                                  "Acz1": Acz1,
-                                  "Gyx1": Gyx1,
-                                  "Gyy1": Gyy1,
-                                  "Gyz1": Gyz1,
-                                  "Acx2": Acx2,
-                                  "Acy2": Acy2,
-                                  "Acz2": Acz2,
-                                  "Gyx2": Gyx2,
-                                  "Gyy2": Gyy2,
-                                  "Gyz2": Gyz2})
+                                "Acx0": Acx0,
+                                "Acy0": Acy0,
+                                "Acz0": Acz0,
+                                "Gyx0": Gyx0,
+                                "Gyy0": Gyy0,
+                                "Gyz0": Gyz0,
+                                "Acx1": Acx1,
+                                "Acy1": Acy1,
+                                "Acz1": Acz1,
+                                "Gyx1": Gyx1,
+                                "Gyy1": Gyy1,
+                                "Gyz1": Gyz1,
+                                "Acx2": Acx2,
+                                "Acy2": Acy2,
+                                "Acz2": Acz2,
+                                "Gyx2": Gyx2,
+                                "Gyy2": Gyy2,
+                                "Gyz2": Gyz2})
 
                     # If the acceleration is less than the stop threshold, stop recording the pitch.
                     if all(abs(val) <= acc_stop_threshold for val in (Acx0-sliding_window[-1]["Acx0"], Acy0-sliding_window[-1]["Acy0"], Acz0-sliding_window[-1]["Acz0"], Acx1-sliding_window[-1]["Acx1"], Acy1-sliding_window[-1]["Acy1"], Acz1-sliding_window[-1]["Acz1"], Acx2-sliding_window[-1]["Acx2"], Acy2-sliding_window[-1]["Acy2"], Acz2-sliding_window[-1]["Acz2"],)):
@@ -175,17 +179,7 @@ def detect_pitch():
                         pitch = []
                         recording_pitch = False
                         motionless_period = 0
-    
-    # Safely exit the program
-    except KeyboardInterrupt:
-        print("\nExiting...\n")
-        print("Total pitches created: " + str(pitches_created))
-        print("Created files: " + str(files_created))
 
-    finally:
-        # Safely disconnect from the Arduino
-        ser.write("disconnect".encode('utf-8'))
-        ser.close()
 
 # Extracts data from the serial
 def extract(message):
@@ -216,5 +210,4 @@ def create_file_name():
     return "pitch_" + str(num) + ".csv"  # Adding .csv extension
 
 # Initiate the pitch detection
-asyncio.run(read_imu())
-detect_pitch()
+asyncio.run(detect_pitch())

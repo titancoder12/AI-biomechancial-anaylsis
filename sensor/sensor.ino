@@ -10,12 +10,8 @@ using namespace std;
 #define TCA_ADDRESS 0x70  // I2C address for the TCA9548A
 
 BLEService imuService("180A");
-/*BLEFloatCharacteristic AcX0("2A19", BLERead | BLENotify);  // X0-axis acc characteristic
-BLEFloatCharacteristic AcY0("2A1A", BLERead | BLENotify);  // Y0-axis acc characteristic
-BLEFloatCharacteristic AcZ0("2A1B", BLERead | BLENotify);  // Z0-axis acc characteristi
-*/
-BLEFloatCharacteristic AcX0("1", BLERead | BLENotify);  // X0-axis acc characteristic
-BLEFloatCharacteristic AcY0("2", BLERead | BLENotify);  // Y0-axis acc characteristic
+BLEFloatCharacteristic S0("1", BLERead | BLENotify);  // X0-axis acc characteristic
+BLEFloatCharacteristic S1("2", BLERead | BLENotify);  // Y0-axis acc characteristic
 BLEFloatCharacteristic AcZ0("3", BLERead | BLENotify);  // Z0-axis acc characteristi
 
 BLEStringCharacteristic Data("4", BLERead | BLENotify, 150);
@@ -34,7 +30,6 @@ void selectChannel(uint8_t channel) {
 
 void setup() {
     Serial.begin(115200);
-    while (!Serial);
 
     //BLE
     if (!BLE.begin()) {
@@ -143,7 +138,7 @@ void loop() {
             double GY2 = g.gyro.y;
             double GZ2 = g.gyro.z;
 
-            char buffer[250];
+            char buffer[500];
             sprintf(buffer, "0AcX:%.4f 0AcY:%.4f 0AcZ:%.4f 0GyX:%.4f 0GyY:%.4f 0GyZ:%.4f 1AcX:%.4f 1AcY:%.4f 1AcZ:%.4f 1GyX:%.4f 1GyY:%.4f 1GyZ:%.4f 2AcX:%.4f 2AcY:%.4f 2AcZ:%.4f 2GyX:%.4f 2GyY:%.4f 2GyZ:%.4f", AX0, AY0, AZ0, GX0, GY0, GZ0, AX1, AY1, AZ1, GX1, GY1, GZ1, AX2, AY2, AZ2, GX2, GY2, GZ2);
 
             Data.writeValue(buffer);
@@ -152,12 +147,12 @@ void loop() {
             //Serial.print("0AcY"); Serial.print(a.acceleration.y);
             //Serial.print("0AcZ"); Serial.println(a.acceleration.z);
 
-            delay(100); // Small delay before sending next data
+            delay(5); // Small delay before sending next data
         }
         Serial.println("Disconnected from central");
     }
 
-    sensors_event_t a, g, temp;
+    /*sensors_event_t a, g, temp;
     
     if (computer_connected) {
     
@@ -198,5 +193,5 @@ void loop() {
 
         Serial.println();
         //delay(5); // Short delay before next cycle
-    }
+    }*/
 }
