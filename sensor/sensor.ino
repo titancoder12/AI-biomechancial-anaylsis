@@ -28,8 +28,8 @@ void selectChannel(uint8_t channel) {
 }
 
 void setup() {
-    Serial.begin(115200);
-
+    Serial.begin(9600);
+    while (!Serial);
     //BLE
     if (!BLE.begin()) {
         Serial.println("Starting BLE failed!");
@@ -51,8 +51,9 @@ void setup() {
     //Serial.println("BLE IMU Sensor is ready...");
   
 
+    Wire.setClock(10000);
     Wire.begin();
-    
+
     // Initialize MPU6050 on Channel 0
     selectChannel(0);
     if (!mpu1.begin()) {
@@ -89,7 +90,7 @@ void loop() {
     if (central) {
         Serial.print("Connected to: ");
         Serial.println(central.address());
-
+        
         while (central.connected()) {
             // Read IMU Data
             sensors_event_t a, g, temp;
@@ -136,8 +137,8 @@ void loop() {
             sprintf(buffer2, "2AcX:%.4f 2AcY:%.4f 2AcZ:%.4f 2GyX:%.4f 2GyY:%.4f 2GyZ:%.4f", AX2, AY2, AZ2, GX2, GY2, GZ2);
             S2.writeValue(buffer2);
 
-            delay(5); // Small delay before sending next data
-
+            delay(0); // Small delay before sending next data
+            Serial.println(buffer0);
         }
         Serial.println("Disconnected from central");
     }
