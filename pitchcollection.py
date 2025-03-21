@@ -14,15 +14,15 @@ arduino_port = "/dev/cu.usbmodem14301" # Mac
 #arduino_port = "/dev/ttyACM0" # Linux
 #arduino_port = "/dev/COM3" # Windows
 baud_rate = 115200  
-ADDRESS = "F63F8735-29EA-2F5E-8653-DF2C1463A90B"  # Address of the BLE device
+ADDRESS = "BD78FA1F-370A-3A38-106C-4D7E34C4BA4C"  # Address of the BLE device
 UUID_X = "180A"
-UUIDS = ["0001", "0002", "0003"] 
+UUIDS = ["0001", "0002"] 
 
 # Initialize variables
 files_created = []
 pitches_created = 0
 stop = False
-imu_data = {"0001": "", "0002": "", "0003": ""}  # Store latest BLE data
+imu_data = {"0001": "", "0002": ""}  # Store latest BLE data
 
 # BLE notification handler
 def notification_handler(uuid):
@@ -62,11 +62,11 @@ async def detect_pitch():
                 print(".")
                 check_for_enter()
                 await asyncio.sleep(0.001)
-                message = f"{imu_data['0001']} {imu_data['0002']} {imu_data['0003']}"
+                message = f"{imu_data['0001']} {imu_data['0002']}"
 
                 print(extract(message))
 
-                Acx0, Acy0, Acz0, Gyx0, Gyy0, Gyz0, Acx1, Acy1, Acz1, Gyx1, Gyy1, Gyz1, Acx2, Acy2, Acz2, Gyx2, Gyy2, Gyz2 = extract(message)
+                Acx0, Acy0, Acz0, Gyx0, Gyy0, Gyz0, Acx1, Acy1, Acz1, Gyx1, Gyy1, Gyz1 = extract(message)
 
                 datapoint = {"Timestamp": time.time(),
                             "Acx0": Acx0,
@@ -81,12 +81,6 @@ async def detect_pitch():
                             "Gyx1": Gyx1,
                             "Gyy1": Gyy1,
                             "Gyz1": Gyz1,
-                            "Acx2": Acx2,
-                            "Acy2": Acy2,
-                            "Acz2": Acz2,
-                            "Gyx2": Gyx2,
-                            "Gyy2": Gyy2,
-                            "Gyz2": Gyz2
                             }
                 #if datapoint != last_pitch:
                 pitch.append(datapoint)
@@ -118,11 +112,11 @@ def extract(message):
     l = []
     for t in message.split():
         try:
-            n = re.sub(r"[012](AcX|AcY|AcZ|GyX|GyY|GyZ|):", "", t)
+            n = re.sub(r"[01](AcX|AcY|AcZ|GyX|GyY|GyZ|):", "", t)
             l.append(float(n))
         except ValueError:
             pass
-    return tuple(l) if len(l) == 18 else (0,) * 18  # Ensure all values exist
+    return tuple(l) if len(l) == 12 else (0,) * 12  # Ensure all values exist
 
 # Creates a file name based on existing files in the directory
 def create_file_name():
