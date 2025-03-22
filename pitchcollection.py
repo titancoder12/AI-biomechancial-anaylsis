@@ -26,13 +26,16 @@ stop = False
 stuck = False
 imu_update_count = {"0001": 0, "0002": 0}
 imu_data = {"0001": "", "0002": ""}  # Store latest BLE data
-
+start_time = 0
 # BLE notification handler
 def notification_handler(uuid):
     async def callback(sender, data):
         imu_data[uuid] = data.decode("utf-8")
         global imu_update_count
         imu_update_count[uuid] += 1
+        if imu_update_count[uuid] % 100 == 0:
+            elapsed = time.time() - start_time
+            print(f"\n{uuid} rate: {imu_update_count[uuid] / elapsed:.1f} Hz")
     return callback
 
 # Check for enter keystroke
@@ -72,6 +75,8 @@ def create_file_name():
 
 # Detects the pitch, saves it to a CSV file
 async def detect_pitch():
+    global start_time
+    start_time = time.time()
     # Initialize variables
     pitch = []
     last_point = ()
@@ -99,9 +104,10 @@ async def detect_pitch():
 
             while not stop:
                 check_for_enter()
-                if imu_update_count == last_update_count:
-                    await asyncio.sleep(0)  # Minimal yield only if no update
-                    continue
+                #if imu_update_count["0001"] <= pitch[-1]["count1"] if pitch else 0 and \
+                #   imu_update_count["0002"] <= pitch[-1]["count2"] if pitch else 0:
+                #    await asyncio.sleep(0)
+                #    continue
 
                 # Both updated — proceed
                 last_update_count = {
@@ -111,10 +117,9 @@ async def detect_pitch():
 
                 message = f"{imu_data['0001']} {imu_data['0002']}"
 
-                #print(".")
-
                 datapoint_extract = extract(message)
                 Acx0, Acy0, Acz0, Gyx0, Gyy0, Gyz0, Acx1, Acy1, Acz1, Gyx1, Gyy1, Gyz1 = datapoint_extract
+                print(message)
 
                 datapoint = {"Timestamp": time.time(),
                             "Acx0": Acx0,
@@ -129,14 +134,16 @@ async def detect_pitch():
                             "Gyx1": Gyx1,
                             "Gyy1": Gyy1,
                             "Gyz1": Gyz1,
+                            "count1": imu_update_count["0001"], 
+                            "count2": imu_update_count["0002"]
                             }
 
-                if datapoint_extract == last_point and last_point == last2_point:
-                    print("Frozen IMU detected. Reconnecting...\n\n")
-                    stop = True
-                    stuck= True
-                    pitch=[]
-                    break
+                #if datapoint_extract == last_point and last_point == last2_point:
+                #    print("Frozen IMU detected. Reconnecting...\n\n")
+                #    stop = True
+                #    stuck= True
+                #    pitch=[]
+                #    break
 
                 pitch.append(datapoint)
                 #last3_point = deepcopy(last2_point)

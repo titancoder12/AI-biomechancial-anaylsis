@@ -120,8 +120,8 @@ void loop() {
         
         while (central.connected()) {
             unsigned long currentMillis = millis();
-            if (currentMillis - lastUpdate >= updateInterval) {
-              lastUpdate = currentMillis;
+            //if (currentMillis - lastUpdate >= updateInterval) {
+            //  lastUpdate = currentMillis;
               // Listen for BLE connections
               // Read IMU Data
               sensors_event_t a, g, temp;
@@ -152,10 +152,10 @@ void loop() {
               sprintf(buffer1, "1AcX:%.4f 1AcY:%.4f 1AcZ:%.4f 1GyX:%.4f 1GyY:%.4f 1GyZ:%.4f", AX1, AY1, AZ1, GX1, GY1, GZ1);
               S1.writeValue(buffer1);
 
-              //Serial.print(buffer0);
-              //Serial.print(" ");
-              //Serial.println(buffer1);
-            }
+              Serial.print(buffer0);
+              Serial.print(" ");
+              Serial.println(buffer1);
+            //}
         }
         Serial.println("Disconnected from central");
         Wire.end();
