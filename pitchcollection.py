@@ -8,7 +8,6 @@ from bleak import BleakClient
 import asyncio
 import sys
 import select
-from copy import deepcopy
 
 # Hardware settings
 arduino_port = "/dev/cu.usbmodem14301" # Mac
@@ -24,18 +23,12 @@ files_created = []
 pitches_created = 0
 stop = False
 stuck = False
-imu_update_count = {"0001": 0, "0002": 0}
 imu_data = {"0001": "", "0002": ""}  # Store latest BLE data
-start_time = 0
+
 # BLE notification handler
 def notification_handler(uuid):
     async def callback(sender, data):
         imu_data[uuid] = data.decode("utf-8")
-        global imu_update_count
-        imu_update_count[uuid] += 1
-        if imu_update_count[uuid] % 100 == 0:
-            elapsed = time.time() - start_time
-            print(f"\n{uuid} rate: {imu_update_count[uuid] / elapsed:.1f} Hz")
     return callback
 
 # Check for enter keystroke
@@ -44,17 +37,22 @@ def check_for_enter():
     if sys.stdin in select.select([sys.stdin], [], [], 0)[0]:  # Check if input is available
         if sys.stdin.read(1) == "\n":  # Read 1 character (Enter key)
             stop = True  # Stop recording
+            return
+        elif sys.stdin.read(1) == "command":
+            stop = True
+            return
+
 
 # Extracts data from the serial
 def extract(message):
-    values = []
-    for part in message.split():
+    l = []
+    for t in message.split():
         try:
-            if ':' in part:
-                values.append(float(part.split(':')[1]))
+            n = re.sub(r"[01](AcX|AcY|AcZ|GyX|GyY|GyZ|):", "", t)
+            l.append(float(n))
         except ValueError:
             pass
-    return tuple(values) if len(values) == 12 else (0,) * 12
+    return tuple(l) if len(l) == 12 else (0,) * 12  # Ensure all values exist
 
 # Creates a file name based on existing files in the directory
 def create_file_name():
@@ -75,51 +73,42 @@ def create_file_name():
 
 # Detects the pitch, saves it to a CSV file
 async def detect_pitch():
-    global start_time
-    start_time = time.time()
+
     # Initialize variables
     pitch = []
-    last_point = ()
-    last2_point = ()
-    last3_point = ()
+    last_pitch = {}
+    past_samples = []
+    not_updated = 0
     global pitches_created
     global stop
     global stuck
-    stop=False
-    stuck=False
+    stuck = False
 
     # Start collecting data
     async with BleakClient(ADDRESS) as client:
         tasks = [client.start_notify(uuid, notification_handler(uuid)) for uuid in UUIDS]
         await asyncio.gather(*tasks)
 
-        while not stuck:
+        while True:
+            if stuck:
+                stuck=False
+                break
+
+            print("Connected.")
             input("Press enter to start recording pitch. ")    
             stop=False
             
             print("Recording pitch...")
             # Keep checking until enter pressed
-            
-            last_update_count = imu_update_count.copy()
-
-            while not stop:
+            while not stop and not stuck:
+                #print(".")
                 check_for_enter()
-                #if imu_update_count["0001"] <= pitch[-1]["count1"] if pitch else 0 and \
-                #   imu_update_count["0002"] <= pitch[-1]["count2"] if pitch else 0:
-                #    await asyncio.sleep(0)
-                #    continue
-
-                # Both updated — proceed
-                last_update_count = {
-                    "0001": imu_update_count["0001"],
-                    "0002": imu_update_count["0002"]
-                }
-
+                await asyncio.sleep(0.001)
                 message = f"{imu_data['0001']} {imu_data['0002']}"
 
-                datapoint_extract = extract(message)
-                Acx0, Acy0, Acz0, Gyx0, Gyy0, Gyz0, Acx1, Acy1, Acz1, Gyx1, Gyy1, Gyz1 = datapoint_extract
-                print(message)
+                extracted = extract(message)
+
+                Acx0, Acy0, Acz0, Gyx0, Gyy0, Gyz0, Acx1, Acy1, Acz1, Gyx1, Gyy1, Gyz1 = extracted
 
                 datapoint = {"Timestamp": time.time(),
                             "Acx0": Acx0,
@@ -134,23 +123,24 @@ async def detect_pitch():
                             "Gyx1": Gyx1,
                             "Gyy1": Gyy1,
                             "Gyz1": Gyz1,
-                            "count1": imu_update_count["0001"], 
-                            "count2": imu_update_count["0002"]
                             }
+                if extracted != last_pitch:
+                    pitch.append(datapoint)
+                    print(message)
+                    not_updated = 0
+                else:
+                    not_updated+=1
+                #print(not_updated)
 
-                #if datapoint_extract == last_point and last_point == last2_point:
-                #    print("Frozen IMU detected. Reconnecting...\n\n")
-                #    stop = True
-                #    stuck= True
-                #    pitch=[]
-                #    break
+                if not_updated > 70:
+                    print("\nIMUs stuck. Restarting BLE...\n")
+                    stuck=True
+                    not_updated = 0
+                    break
+                last_pitch = extracted
 
-                pitch.append(datapoint)
-                #last3_point = deepcopy(last2_point)
-                last2_point = deepcopy(last_point)
-                last_point = deepcopy(datapoint_extract)
             if not stuck:
-                print("Total samples: "+str(len(pitch)))
+                print("Total samples: "+str(len(pitch)+len(pitch)))
                 speed = input("Enter speed of pitch (mph) [OV to override]: ")
                 if speed == "OV":
                     print("Pitch overrided. Not saving.")
@@ -168,12 +158,13 @@ async def detect_pitch():
                 else:
                     print("Invalid speed. Not saving.")
                     print()
-                pitch = []
+            pitch = []
 
 # Initiate the pitch detection
 try:
     print("Access recorded pitches at /pitches in the current directory.")
     print("Press Ctrl+C to exit.\n")
+    print("Connecting to BLE device...")
     while True:
         asyncio.run(detect_pitch())
 except KeyboardInterrupt or TracebackError or pynput._util.AbstractListener.StopException:

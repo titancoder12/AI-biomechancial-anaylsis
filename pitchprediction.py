@@ -1,4 +1,3 @@
-import serial
 import time
 import serial.tools.list_ports
 import re
@@ -8,6 +7,12 @@ from bleak import BleakClient
 import asyncio
 import sys
 import select
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.layers import Bidirectional
+from tensorflow.keras.models import Model, load_model
+from tensorflow.keras.layers import Input, LSTM, Dense, Bidirectional, Dropout, Masking
+from sklearn.preprocessing import StandardScaler
+import numpy as np
 
 # Hardware settings
 arduino_port = "/dev/cu.usbmodem14301" # Mac
@@ -25,6 +30,21 @@ stop = False
 stuck = False
 imu_data = {"0001": "", "0002": ""}  # Store latest BLE data
 
+"""def load_model():
+    input_layer = Input(shape=(414, 13))
+    x = Masking(mask_value=0.)(input_layer)
+    x = Bidirectional(LSTM(128, return_sequences=True))(x)
+    x = Dropout(0.3)(x)
+    x = Bidirectional(LSTM(64, return_sequences=False))(x)
+    x = Dropout(0.3)(x)
+    x = Dense(32, activation='relu')(x)
+    output = Dense(1)(x)
+
+    model = Model(inputs=input_layer, outputs=output)
+    model = lm("speed_prediction/model.weights.h5")
+    return model"""
+model = load_model("pitchprediction.keras")
+
 # BLE notification handler
 def notification_handler(uuid):
     async def callback(sender, data):
@@ -41,6 +61,36 @@ def check_for_enter():
         elif sys.stdin.read(1) == "command":
             stop = True
             return
+        
+# Extracts data from the serial
+def extract(message):
+    l = []
+    for t in message.split():
+        try:
+            n = re.sub(r"[01](AcX|AcY|AcZ|GyX|GyY|GyZ|):", "", t)
+            l.append(float(n))
+        except ValueError:
+            pass
+    return tuple(l) if len(l) == 12 else (0,) * 12  # Ensure all values exist
+
+# Runs model with preprocessing of data
+def run_model(data):
+    # Data to Dataframe
+    df = pd.DataFrame(data)
+
+    # Normalize
+    scaler = StandardScaler()
+    scaler.fit(df)
+    imu_scaled = scaler.transform(df)
+    
+    # Pad
+    imu_scaled_pad = pad_sequences([imu_scaled], maxlen=414, padding="post", dtype='float32')
+
+    # Predict
+    prediction = model.predict(imu_scaled_pad)
+    return prediction[0][0]
+
+
 
 # Detects the pitch, saves it to a CSV file
 async def detect_pitch():
@@ -103,61 +153,17 @@ async def detect_pitch():
                     not_updated+=1
                 #print(not_updated)
 
-                if not_updated > 100:
+                if not_updated > 70:
                     print("\nIMUs stuck. Restarting BLE...\n")
                     stuck=True
                     not_updated = 0
                     break
                 last_pitch = extracted
 
-            print("Total samples: "+str(len(pitch)+len(pitch)))
-            speed = input("Enter speed of pitch (mph) [OV to override]: ")
-            if speed == "OV":
-                print("Pitch overrided. Not saving.")
-                print()
-            elif speed.isdigit():
-                # Save pitch data to CSV file
-                pitch_df = pd.DataFrame(pitch)
-                pitch_df["speed_mph"] = speed
-
-                filename = create_file_name()
-                #df = pitch_df.drop_duplicates(subset=pitch_df.columns.difference(["Timestamp"]))
-                pitch_df.to_csv("./pitches/" + filename, index=False)
-                pitches_created += 1
-
-            else:
-                print("Invalid speed. Not saving.")
-                print()
+            if not stuck:
+                print("Processing pitch...")
+                print("Predicted speed: " + str(run_model(pitch)))
             pitch = []
-            
-
-# Extracts data from the serial
-def extract(message):
-    l = []
-    for t in message.split():
-        try:
-            n = re.sub(r"[01](AcX|AcY|AcZ|GyX|GyY|GyZ|):", "", t)
-            l.append(float(n))
-        except ValueError:
-            pass
-    return tuple(l) if len(l) == 12 else (0,) * 12  # Ensure all values exist
-
-# Creates a file name based on existing files in the directory
-def create_file_name():
-    #print("Creating file...")
-    filenamenumbers = []
-    for file in glob.glob("./pitches/*.csv"):  # Corrected path to CSV files
-        #print(file)
-        filenamenumbers.append(int(re.findall(r'\d+', file)[0]))  # Safely extract numbers from filenames
-    if filenamenumbers == []:
-        num = 0
-    else:
-        max_num = max(filenamenumbers)
-        num = max_num + 1
-    
-    print("Created file pitch_"+str(num)+".csv" + "\n\n")
-    files_created.append(f"{num}.csv")
-    return "pitch_" + str(num) + ".csv"  # Adding .csv extension
 
 # Initiate the pitch detection
 try:
@@ -167,5 +173,4 @@ try:
     while True:
         asyncio.run(detect_pitch())
 except KeyboardInterrupt or TracebackError or pynput._util.AbstractListener.StopException:
-    print(f"\n\nCreated {pitches_created} {'pitch' if pitches_created == 1 else 'pitches'}: {files_created}")
     print("Exiting...")
