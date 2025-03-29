@@ -162,7 +162,7 @@ async def detect_pitch():
 
             if not stuck:
                 print("Processing pitch...")
-                print("Predicted speed: " + str(run_model(pitch)))
+                print("Predicted speed: " + str(run_model(pitch)) + "mph")
             pitch = []
 
 # Initiate the pitch detection

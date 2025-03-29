@@ -61,6 +61,8 @@ void i2cUnstick() {
 }
 
 void setup() {
+    //Wire.setTimeout(25000); // Arduino Wire library timeout (25ms)
+
     i2cBusReset();
 
     delay(2000);
