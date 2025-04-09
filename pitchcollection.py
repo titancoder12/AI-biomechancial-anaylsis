@@ -14,7 +14,7 @@ arduino_port = "/dev/cu.usbmodem14301" # Mac
 #arduino_port = "/dev/ttyACM0" # Linux
 #arduino_port = "/dev/COM3" # Windows
 baud_rate = 115200  
-ADDRESS = "BD78FA1F-370A-3A38-106C-4D7E34C4BA4C"  # Address of the BLE device
+ADDRESS = "FF09F8C5-BEAA-C5D6-CE44-82876D5CB88B"  # Address of the BLE device
 UUID_X = "180A"
 UUIDS = ["0001", "0002"] 
 

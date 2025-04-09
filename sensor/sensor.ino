@@ -63,6 +63,9 @@ void i2cUnstick() {
 void setup() {
     //Wire.setTimeout(25000); // Arduino Wire library timeout (25ms)
 
+    pinMode(13, OUTPUT);
+    digitalWrite(13, HIGH); // Supplies ~3.3V to AD0 through voltage divider
+
     i2cBusReset();
 
     delay(2000);
