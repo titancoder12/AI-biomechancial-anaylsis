@@ -7,7 +7,6 @@ import sys
 import select
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.models import load_model
-from tensorflow.keras.utils import get_custom_objects
 from tensorflow.keras.layers import (
     Input, Bidirectional, LSTM, Dense, Dropout, Masking, Flatten,
     RepeatVector, Multiply, Permute, Activation, Lambda
@@ -16,7 +15,11 @@ from sklearn.preprocessing import StandardScaler
 import numpy as np
 from ahrs.filters import Complementary
 import tensorflow as tf
-import keras
+from tensorflow.keras.models import Model
+from tensorflow.keras import backend as K
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
 
 # Hardware settings
 arduino_port = "/dev/cu.usbmodem14301" # Mac
@@ -26,6 +29,7 @@ baud_rate = 115200
 ADDRESS = "FF09F8C5-BEAA-C5D6-CE44-82876D5CB88B"  # Address of the BLE device
 UUID_X = "180A"
 UUIDS = ["0001", "0002"] 
+model = None
 
 # Initialize variables
 files_created = []
@@ -33,58 +37,6 @@ pitches_created = 0
 stop = False
 stuck = False
 imu_data = {"0001": "", "0002": ""}
-
-from tensorflow.keras.layers import Layer
-
-class NotEqual(tf.keras.layers.Layer):
-    def call(self, inputs):
-        a, b = inputs
-        return tf.math.not_equal(a, b)
-
-import tensorflow as tf
-from tensorflow.keras.layers import Layer
-
-class Any(Layer):
-    def __init__(self, axis=-1, keepdims=False, **kwargs):
-        super().__init__(**kwargs)
-        self.axis = axis
-        self.keepdims = keepdims
-
-    def call(self, inputs):
-        return tf.reduce_any(inputs, axis=self.axis, keepdims=self.keepdims)
-
-    def get_config(self):
-        config = super().get_config()
-        config.update({
-            'axis': self.axis,
-            'keepdims': self.keepdims
-        })
-        return config
-
-from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Input, Masking, Bidirectional, LSTM, Dense, Dropout
-from tensorflow.keras.layers import Flatten, RepeatVector, Permute, Multiply
-import tensorflow.keras.backend as K
-import tensorflow as tf
-
-# Custom attention layer (instead of Lambda)
-class CustomAttention(tf.keras.layers.Layer):
-    def __init__(self, temperature=0.7):
-        super().__init__()
-        self.temperature = temperature
-        self.dense = Dense(1)
-        self.flatten = Flatten()
-    
-    def call(self, inputs):
-        attention = self.dense(inputs)
-        attention = self.flatten(attention)
-        attention = attention / self.temperature
-        attention_weights = tf.nn.softmax(attention, name='attention_weights')
-        attention_weights = RepeatVector(inputs.shape[-1])(attention_weights)
-        attention_weights = Permute([2, 1])(attention_weights)
-        output = inputs * attention_weights
-        output = tf.reduce_sum(output, axis=1)
-        return output
 
 # Custom attention mechanism
 def attention_layer(inputs, temperature=0.7):
@@ -95,35 +47,37 @@ def attention_layer(inputs, temperature=0.7):
     attention_repeated = RepeatVector(inputs.shape[-1])(attention_weights)
     attention_permuted = Permute([2, 1])(attention_repeated)
     output_attention = Multiply()([inputs, attention_permuted])
-    output_attention = Lambda(lambda x: K.sum(x, axis=1))(output_attention)
+    output_attention = Lambda(lambda x: K.sum(x, axis=1), output_shape=lambda input_shape: (input_shape[0], input_shape[2]))(output_attention)
     return output_attention, attention_weights
 
-# Replace this with your exact number of timesteps and features
-max_length = 414  # sequence length
-num_features = 20
+def load_model():
+    global model
+    max_length = 241 
+    num_features = 20
 
-input_layer = Input(shape=(max_length, 20))
-#input_layer = Input(shape=(max_length, 4))
-masked = Masking(mask_value=0.0)(input_layer)
-bilstm = Bidirectional(LSTM(64, return_sequences=True))(masked)
-bilstm = Bidirectional(LSTM(32, return_sequences=True))(masked)
-#bilstm2 = Bidirectional(LSTM(64, return_sequences=True))(bilstm)
-attention_output, attention_weights = attention_layer(bilstm)
-dense = Dense(64, activation='relu')(attention_output)
-dense = Dense(32, activation='relu')(dense)
-dropout = Dropout(0.3)(dense)
-#dense2 = Dense(32, activation='relu')(dropout)
-output = Dense(1, name="output_layer")(dense)
+    input_layer = Input(shape=(max_length, 20))
+    #input_layer = Input(shape=(max_length, 4))
+    masked = Masking(mask_value=0.0)(input_layer)
+    bilstm = Bidirectional(LSTM(64, return_sequences=True))(masked)
+    bilstm = Bidirectional(LSTM(32, return_sequences=True))(masked)
+    #bilstm2 = Bidirectional(LSTM(64, return_sequences=True))(bilstm)
+    attention_output, attention_weights = attention_layer(bilstm)
+    dense = Dense(64, activation='relu')(attention_output)
+    dense = Dense(32, activation='relu')(dense)
+    dropout = Dropout(0.3)(dense)
+    #dense2 = Dense(32, activation='relu')(dropout)
+    output = Dense(1, name="output_layer")(dense)
 
-model = Model(inputs=input_layer, outputs=[output, attention_weights])
+    model = Model(inputs=input_layer, outputs=[output, attention_weights])
 
-model.compile(
-    loss={'output_layer': 'mse', 'attention_weights': None},
-    optimizer='adam',
-    metrics={'output_layer': ['mae', 'mse']}
-)
-
-model.load_weights("bestmodel.h5")
+    model.compile(
+        loss={'output_layer': 'mse', 'attention_weights': None},
+        optimizer='adam',
+        metrics={'output_layer': ['mae', 'mse']}
+    )
+    model.load_weights("bestmodel.h5")
+    print("Model loaded.")
+    return model
 
 # BLE notification handler
 def notification_handler(uuid):
@@ -155,7 +109,7 @@ def extract(message):
 
 def preprocessing(data):
 #print(f"Processing {file}")
-    df = pd(data)
+    df = pd.DataFrame(data)
 
     # Get acceleration and gyroscope data for both sensors
     pitch = df[['Acx0', 'Acy0', 'Acz0', 'Gyx0', 'Gyy0', 'Gyz0',
@@ -200,20 +154,39 @@ def preprocessing(data):
 
     # Reshape back to original shape (optional here since we kept timesteps, but shown for clarity)
     X_pitch_scaled = X_pitch_scaled.reshape(features.shape)
+
+    imu_scaled_pad = pad_sequences([X_pitch_scaled], maxlen=241, padding="post", dtype='float32')
     
-    return features
+    return imu_scaled_pad
 
 # Runs model with preprocessing of data
 def run_model(data):
-    # Preprocess data
-    preprocessed = preprocessing(data)
+    global model
+    return model.predict(data)
 
-    # Pad
-    imu_scaled_pad = pad_sequences([preprocessed], maxlen=414, padding="post", dtype='float32')
+def plot_attention_weights(att_weights, pitch_pred, features):
+    timesteps = features.shape[0]
+    attention = np.squeeze(att_weights)  # remove any extra dimensions (e.g. (1, 1, 241) → (241,))
+    attention = attention[:timesteps]  # ensure same length
 
-    # Predict
-    prediction = model.predict(imu_scaled_pad)
-    return prediction[0][0]
+    # Normalize
+    normalized_attention = (attention - np.min(attention)) / (np.max(attention) - np.min(attention) + 1e-8)
+
+    # Multiply for visualization
+    attended_data = features * normalized_attention[:, np.newaxis]  # (timesteps, 20)
+
+    plt.figure(figsize=(14, 6))
+    sns.heatmap(attended_data.T, cmap='viridis', xticklabels=10, yticklabels=[
+        'Shoulder-Acx', 'Shoulder-Acy', 'Shoulder-Acz', 'Shoulder-Gyx', 'Shoulder-Gyy', 'Shoulder-Gyz',
+        'Hip-Acx', 'Hip-Acy', 'Hip-Acz', 'Hip-Gyx', 'Hip-Gyy', 'Hip-Gyz',
+        'S0Q0', 'S0Q1', 'S0Q2', 'S0Q3', 'S1Q0', 'S1Q1', 'S1Q2', 'S1Q3',
+    ])
+    plt.title(f"Attention-Weighted Sensor Data (Predicted Speed: {float(pitch_pred[0]):.1f} mph)")
+    plt.xlabel("Time Step")
+    plt.ylabel("Sensor Channels")
+    plt.tight_layout()
+    plt.show(block=True)
+
 
 # Detects the pitch, saves it to a CSV file
 async def detect_pitch():
@@ -285,13 +258,24 @@ async def detect_pitch():
 
             if not stuck:
                 print("Processing pitch...")
-                print("Predicted speed: " + str(run_model(pitch)) + "mph")
+                print("Pitch length: " + str(len(pitch)) + " samples")
+                preprocessed = preprocessing(pitch)
+                prediction, attention_weights = run_model(preprocessed)
+                features = preprocessed[0, :, :] 
+                print("Predicted speed: " + str(prediction[0][0]) + "mph")
+                plot_attention_weights(attention_weights, prediction, features)
+                prediction = prediction[0][0]
+
             pitch = []
 
 # Initiate the pitch detection
 try:
     print("Access recorded pitches at /pitches in the current directory.")
     print("Press Ctrl+C to exit.\n")
+
+    print("Loading model...")
+    load_model()
+
     print("Connecting to BLE device...")
     while True:
         asyncio.run(detect_pitch())
