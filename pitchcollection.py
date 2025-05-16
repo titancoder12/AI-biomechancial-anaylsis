@@ -125,12 +125,12 @@ async def detect_pitch():
                             "Gyz1": Gyz1,
                             }
                 if extracted != last_pitch:
-                    pitch.append(datapoint)
                     print(message)
                     not_updated = 0
                 else:
                     not_updated+=1
                 #print(not_updated)
+                pitch.append(datapoint)
 
                 if not_updated > 70:
                     print("\nIMUs stuck. Restarting BLE...\n")
