@@ -5,6 +5,7 @@ from bleak import BleakClient
 import asyncio
 import sys
 import select
+from tensorflow import keras
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.models import load_model
 from tensorflow.keras.layers import (
@@ -17,9 +18,12 @@ from ahrs.filters import Complementary
 import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras import backend as K
+from keras.utils import get_custom_objects
+from tensorflow import not_equal
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
+import joblib
 
 # Hardware settings
 arduino_port = "/dev/cu.usbmodem14301" # Mac
@@ -52,7 +56,7 @@ def attention_layer(inputs, temperature=0.7):
 
 def load_model():
     global model
-    max_length = 241 
+    max_length = 414 
     num_features = 20
 
     input_layer = Input(shape=(max_length, 20))
@@ -75,9 +79,7 @@ def load_model():
         optimizer='adam',
         metrics={'output_layer': ['mae', 'mse']}
     )
-    model.load_weights("bestmodel.h5")
-    print("Model loaded.")
-    return model
+    model.load_weights("velo_predictor.keras")
 
 # BLE notification handler
 def notification_handler(uuid):
@@ -144,18 +146,16 @@ def preprocessing(data):
 
     num_features = 20
 
-    scaler = StandardScaler()
-
     # Reshape to 2D for the scaler: (timesteps * 1, num_features)
     X_pitch_reshaped = features.reshape(-1, num_features)
 
-    # Fit and transform just this one pitch
-    X_pitch_scaled = scaler.fit_transform(X_pitch_reshaped)
+    scaler = joblib.load('scaler.pkl')
+    X_pitch_scaled = scaler.transform(X_pitch_reshaped)
 
     # Reshape back to original shape (optional here since we kept timesteps, but shown for clarity)
     X_pitch_scaled = X_pitch_scaled.reshape(features.shape)
 
-    imu_scaled_pad = pad_sequences([X_pitch_scaled], maxlen=241, padding="post", dtype='float32')
+    imu_scaled_pad = pad_sequences([X_pitch_scaled], maxlen=414, padding="post", dtype='float32')
     
     return imu_scaled_pad
 
@@ -187,6 +187,69 @@ def plot_attention_weights(att_weights, pitch_pred, features):
     plt.tight_layout()
     plt.show(block=True)
 
+def plot_dual_motion_with_attention(features, attention_weights, title="Motion vs Attention (Shoulder + Hip)"):
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    # Trim attention to match timesteps
+    attention = np.squeeze(attention_weights)[:features.shape[0]]  # (timesteps,)
+
+    # Extract acceleration data
+    acc_shoulder = features[:, 0:3]  # Acx0, Acy0, Acz0
+    acc_hip = features[:, 6:9]       # Acx1, Acy1, Acz1
+
+    # Compute magnitudes
+    shoulder_mag = np.linalg.norm(acc_shoulder, axis=1)
+    hip_mag = np.linalg.norm(acc_hip, axis=1)
+
+    # Normalize for overlay
+    shoulder_mag_norm = (shoulder_mag - shoulder_mag.min()) / (shoulder_mag.max() - shoulder_mag.min() + 1e-8)
+    hip_mag_norm = (hip_mag - hip_mag.min()) / (hip_mag.max() - hip_mag.min() + 1e-8)
+    attention_norm = (attention - attention.min()) / (attention.max() - attention.min() + 1e-8)
+
+    # Plot
+    plt.figure(figsize=(14, 5))
+    plt.plot(shoulder_mag_norm, label="Shoulder Acc Magnitude", color='blue')
+    plt.plot(hip_mag_norm, label="Hip Acc Magnitude", color='green')
+    plt.plot(attention_norm, label="Attention Weights", color='red', linestyle='--', alpha=0.7)
+
+    plt.xlabel("Timestep")
+    plt.ylabel("Normalized Value")
+    plt.title(title)
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+def plot_attention_heatmap_by_sensor(features, attention_weights, prediction):
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    import numpy as np
+
+    attention = np.squeeze(attention_weights)[:features.shape[0]]  # (timesteps,)
+    attention = (attention - attention.min()) / (attention.max() - attention.min() + 1e-8)
+
+    # Apply attention weights
+    attended = features * attention[:, np.newaxis]
+
+    # Break out into shoulder vs hip feature groups
+    shoulder_features = attended[:, :6].T  # Acx0–Gyz0
+    hip_features = attended[:, 6:12].T     # Acx1–Gyz1
+
+    fig, axs = plt.subplots(2, 1, figsize=(14, 7), sharex=True)
+
+    sns.heatmap(shoulder_features, cmap="Blues", ax=axs[0], xticklabels=10,
+                yticklabels=['S-Acx', 'S-Acy', 'S-Acz', 'S-Gyx', 'S-Gyy', 'S-Gyz'])
+    axs[0].set_title("Attention-Weighted Shoulder Features")
+
+    sns.heatmap(hip_features, cmap="Greens", ax=axs[1], xticklabels=10,
+                yticklabels=['H-Acx', 'H-Acy', 'H-Acz', 'H-Gyx', 'H-Gyy', 'H-Gyz'])
+    axs[1].set_title("Attention-Weighted Hip Features")
+
+    plt.suptitle(f"Predicted Speed: {prediction:.1f} mph", fontsize=14)
+    plt.xlabel("Time Step")
+    plt.tight_layout()
+    plt.show()
 
 # Detects the pitch, saves it to a CSV file
 async def detect_pitch():
@@ -261,9 +324,11 @@ async def detect_pitch():
                 print("Pitch length: " + str(len(pitch)) + " samples")
                 preprocessed = preprocessing(pitch)
                 prediction, attention_weights = run_model(preprocessed)
-                features = preprocessed[0, :, :] 
+                features = preprocessed[0, :, :]
+ 
                 print("Predicted speed: " + str(prediction[0][0]) + "mph")
                 plot_attention_weights(attention_weights, prediction, features)
+                plot_dual_motion_with_attention(features, attention_weights)
                 prediction = prediction[0][0]
 
             pitch = []
@@ -281,3 +346,4 @@ try:
         asyncio.run(detect_pitch())
 except KeyboardInterrupt or TracebackError or pynput._util.AbstractListener.StopException:
     print("Exiting...")
+
